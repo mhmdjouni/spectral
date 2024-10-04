@@ -196,7 +196,14 @@ class SpyFile(Image):
         for k in list(kwargs.keys()):
             if k not in ('dtype', 'scale'):
                 raise ValueError('Invalid keyword %s.' % str(k))
-        dtype = kwargs.get('dtype', ImageArray.format)
+        cnames = ['complex{}'.format(s) for s in spy.COMPLEX_SIZES]
+        ctypes = [np.dtype(n).name for n in cnames if hasattr(np, n)]
+        if 'dtype' in kwargs:
+            dtype = kwargs['dtype']
+        elif np.dtype(self.dtype).name in ctypes:
+            dtype = self.dtype
+        else:
+            dtype = ImageArray.format
         data = array.array(typecode('b'))
         self.fid.seek(self.offset)
         data.fromfile(self.fid, self.nrows * self.ncols *
@@ -210,7 +217,8 @@ class SpyFile(Image):
             npArray = npArray.transpose([1, 2, 0])
         else:
             npArray.shape = (self.nrows, self.ncols, self.nbands)
-        npArray = npArray.astype(dtype)
+        if np.dtype(dtype).name != npArray.dtype.name:
+            npArray = npArray.astype(dtype)
         if self.scale_factor != 1 and kwargs.get('scale', True):
             npArray = npArray / float(self.scale_factor)
         imarray = ImageArray(npArray, self)

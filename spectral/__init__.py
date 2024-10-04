@@ -4,7 +4,7 @@ Basic package setup and global imports.
 
 from __future__ import absolute_import, division, print_function, unicode_literals
 
-__version__ = '0.22.4'
+__version__ = '0.23.1'
 
 import sys
 if sys.byteorder == 'little':
@@ -15,6 +15,8 @@ else:
 BSQ = 0
 BIL = 1
 BIP = 2
+
+COMPLEX_SIZES = [64, 128, 256]
 
 from .utilities.errors import SpyException
 from .config import SpySettings, spy_colors

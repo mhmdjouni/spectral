@@ -17,17 +17,19 @@ from __future__ import division, print_function, unicode_literals
 import itertools
 import numpy as np
 import os
-
+import warnings
 
 import spectral as spy
 from spectral.io.spyfile import find_file_path, FileNotFoundError, SpyFile
 from spectral.tests import testdir
 from spectral.tests.spytest import SpyTest
 
+ENVI_COMPLEX_TEST_SIZES = [64, 28]
 
-def assert_almost_equal(a, b, **kwargs):
-    if not np.allclose(a, b, **kwargs):
-        raise Exception('NOPE')
+assert_almost_equal = np.testing.assert_allclose
+
+def assert_allclose (a, b, **kwargs):
+    np.testing.assert_allclose(np.array(a), np.array(b), **kwargs)
 
 class SpyFileTest(SpyTest):
     '''Tests that SpyFile methods read data correctly from files.'''
@@ -144,14 +146,14 @@ class SpyFileTest(SpyTest):
         data = self.image.load()
         spyf = self.image
 
-        load_assert = np.allclose
+        load_assert = assert_allclose
         load_assert(data[i, j, k], self.value)
         first_band = spyf[:, :, 0]
         load_assert(data[:, :, 0], first_band)
         # This is checking if different ImageArray and SpyFile indexing
         # results are the same shape, so we can't just reuse the already
         # loaded first band.
-        load_assert(data[:, 0, 0], spyf[:, 0, 0])
+        load_assert(data[:, 0, 0].squeeze(), spyf[:, 0, 0].squeeze())
         load_assert(data[0, 0, 0], spyf[0, 0, 0])
         load_assert(data[0, 0], spyf[0, 0])
         load_assert(data[-1, -1, -1], spyf[-1, -1, -1])
@@ -267,7 +269,7 @@ class SpyFileTestSuite(object):
             os.mkdir(testdir)
         image = spy.open_image(self.filename)
         basename = os.path.join(testdir,
-                                os.path.splitext(self.filename)[0])
+                                os.path.splitext(os.path.split(self.filename)[-1])[0])
         interleaves = ('bil', 'bip', 'bsq')
         ends = ('big', 'little')
         cases = itertools.product(interleaves, self.dtypes, ends)
@@ -298,17 +300,51 @@ class SpyFileTestSuite(object):
                 test = SpyFileTest(testimg, self.datum, self.value)
                 test.run()
 
+def create_complex_test_files(dtypes):
+    '''Create test files with complex data'''
+    if not os.path.isdir(testdir):
+        os.mkdir(testdir)
+    tests = []
+    shape = (100, 200, 64)
+    datum = (33, 44, 25)
+    for t in dtypes:
+        X = np.array(np.random.rand(*shape) + 1j * np.random.rand(*shape),
+                     dtype=t)
+        fname = os.path.join(testdir, 'test_{}.hdr'.format(t))
+        spy.envi.save_image(fname, X)
+        tests.append((fname, datum, X[datum]))
+    return tests
 
 def run():
     tests = [('92AV3C.lan', (99, 99, 99), 2057.0)]
-#    tests = [('92AV3C.lan', (99, 99, 99), 2057.0),
-#             ('f970619t01p02_r02_sc04.a.rfl', (99, 99, 99), 0.2311),
-#             ('cup95eff.int.hdr', (99, 99, 33), 0.1842)]
     for (fname, datum, value) in tests:
         try:
             check = find_file_path(fname)
             suite = SpyFileTestSuite(fname, datum, value,
-                                     dtypes=('i2', 'i4', 'f4', 'f8'))
+                                     dtypes=('i2', 'i4', 'f4', 'f8', 'c8', 'c16'))
+            suite.run()
+        except FileNotFoundError:
+            print('File "%s" not found. Skipping.' % fname)
+
+    # Run tests for complex data types
+
+    # Only test complex sizes supported by numpy and ENVI.
+    dtypes = []
+    for s in [s for s in spy.COMPLEX_SIZES if s in ENVI_COMPLEX_TEST_SIZES]:
+        t = 'complex{}'.format(s)
+        if hasattr(np, t):
+            dtypes.append(t)
+        else:
+            # This is unlikely to happen because numpy currently supports
+            # more complex types than ENVI
+            warnings.warn('numpy does not support {}. Skipping test.'.format(t))
+
+    tests = create_complex_test_files(dtypes)
+    for (dtype, (fname, datum, value)) in zip(dtypes, tests):
+        try:
+            check = find_file_path(fname)
+            suite = SpyFileTestSuite(fname, datum, value,
+                                     dtypes=(dtype,))
             suite.run()
         except FileNotFoundError:
             print('File "%s" not found. Skipping.' % fname)
